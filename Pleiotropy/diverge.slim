@@ -1,0 +1,159 @@
+initialize() {
+
+		defineConstant("N",1e4); // population size
+		defineConstant("u",2e-6); // mutation rate
+
+		initializeMutationRate(u);
+
+		// QTL (type 1)
+		initializeMutationType("m1",0.5, "f", 0.0);  // QTL, we define selection coefficients as effect sizes in the mutation callback
+		initializeGenomicElementType("g1",m1,1.0);
+
+		// neutral demographic reference (type 2)
+		initializeMutationType("m2", 0.5, "f", 0.0);  // neut reference
+		initializeGenomicElementType("g2",m2,1.0);
+
+		// set up our chromosome regions
+	  defineConstant("n_QTL", 4000); // number of QTLs
+	  defineConstant("n_neutral_loci", 1000); // number of neutral bp with free recombination
+
+		initializeGenomicElement(g1,0,n_QTL-1);
+		initializeGenomicElement(g2,n_QTL,n_QTL+n_neutral_loci-1);
+
+		initializeRecombinationRate(0.5);
+
+		m1.convertToSubstitution = T;
+		m1.mutationStackPolicy = "f";
+		m2.mutationStackPolicy = "f";
+
+}
+mutation(m1) {
+	// draw mutational effects for the new m1 mutation
+	// we want to track effect on trait 1, and just care about effect on other traits for the sel coef
+	trait_effects = rnorm(n,0,sd_a); // sample effect a_i for all n traits
+	mut.setValue("all_a",trait_effects); // record effects on all traits
+	s = sum(sapply(trait_effects,"applyValue^2;")) / (n*w^2) ;
+	mut.setSelectionCoeff(s); // selection coefficient will not actually be used, but using this to store what it would be
+
+	return T; // proceed with creating the proposed mutation
+}
+fitness(m1) {
+	// Make the QTL effects neutral --
+	// the assigned selection coefficients are actually how we track their effect sizes
+	// and we calculate fitness based on an individual's total phenotype each generation
+	// by changing the fitnessScaling attribute
+	return 1.0;
+}
+
+// load in population file, then decide which future script blocks to run based on the generation
+1 late() {
+  sim.readFromPopulationFile(input_diverge_file);
+
+	// make it generation 1
+	sim.generation=1;
+
+	// read the substitution info from a file
+	defineGlobal("sub_traits", asFloat(strsplit(readFile(input_sub_file),",")));
+
+	// assign mutation values from a file
+	lines = readFile(input_effects_file);
+	lines = lines[seqLen(length(lines)-1)]; // remove blank line at end
+	// get file lines in order of mutations
+	muts=sim.mutationsOfType(m1);
+	line_mutIDs=sapply(lines, "asInteger(strsplit(applyValue,',')[0]);");
+	lines=lines[match(muts.id,line_mutIDs)];
+	for(i in seqLen(length(lines))){
+		fields=strsplit(lines[i],",");
+		muts[i].setSelectionCoeff(asFloat(fields[1]));
+		muts[i].setValue('all_a',asFloat(fields[2:(n+1)]));
+	}
+
+	// each run is 3500 generations; generations to record output in this run:
+	record_gens = sim.generation + seq(500,3500,by=500);
+
+	// use the s1 block as a template to run in all generations of interest
+	for (gen in record_gens){
+		sim.registerLateEvent(NULL, s1.source, gen, gen);
+	}
+
+	// deregister the s1 block
+	sim.deregisterScriptBlock(s1);
+
+	// use the s2 block to save the state of the simulation for the next run
+	final_gen = record_gens[length(record_gens)-1];
+	sim.registerLateEvent(NULL, s2.source, final_gen, final_gen);
+	sim.deregisterScriptBlock(s2);
+
+	// use the s3 block to calculate fitness each generation
+	sim.registerLateEvent(NULL, s3.source, sim.generation+1, final_gen);
+	sim.deregisterScriptBlock(s3);
+
+	// record mutation data at start of divergence (common ancestor)
+	header="generation,mut_type,mut_ID,position,selection_coef,a1_effect_size,freq";
+	if (!writeFile(mut_track_file, header)){stop("Error writing file.");}
+	for(mut in sim.mutationsOfType(m1)){
+		if (!writeFile(mut_track_file, paste(c(sim.generation,mut.mutationType.id,mut.id,mut.position,mut.selectionCoeff,mut.getValue('all_a')[0],sim.mutationFrequencies(p1,mut)),sep=','), append=T)){stop("Error writing file.");}
+	}
+	for(mut in sim.mutationsOfType(m2)){
+		if (!writeFile(mut_track_file, paste(c(sim.generation,mut.mutationType.id,mut.id,mut.position,mut.selectionCoeff,0,sim.mutationFrequencies(p1,mut)),sep=','), append=T)){stop("Error writing file.");}
+	}
+
+
+	// calc fitness for this gen
+	sim.subpopulations.individuals.fitnessScaling = sapply(sim.subpopulations.individuals,"exp(-sum(sapply(apply(sapply(applyValue.genomes.mutationsOfType(m1),'applyValue.getValue(\"all_a\");',simplify='matrix'), 0, 'sum(applyValue);') + sub_traits,'applyValue^2;'))/(2*n*(w^2)));" );
+
+}
+
+
+// record mutation data
+s1 500 late() {
+	for(mut in sim.mutationsOfType(m1)){
+		writeFile(mut_track_file, paste(c(sim.generation,mut.mutationType.id,mut.id,mut.position,mut.selectionCoeff,mut.getValue('all_a')[0],sim.mutationFrequencies(p1,mut)),sep=','), append=T);
+	}
+	for(mut in sim.mutationsOfType(m2)){
+		writeFile(mut_track_file, paste(c(sim.generation,mut.mutationType.id,mut.id,mut.position,mut.selectionCoeff,0,sim.mutationFrequencies(p1,mut)),sep=','), append=T);
+	}
+}
+
+// output data at end of simulation
+s2 500 late() {
+	// save the state of the simulation
+	sim.outputFull(output_diverge_file,binary=T);
+
+	// output the substitution info to a file
+	if(!writeFile(output_sub_file, paste(sub_traits,sep=",") )){stop("Error writing substitutions file.");}
+
+	// output the values of mutations to a file
+	mut_lines = paste0(sapply(sim.mutationsOfType(m1),"paste0(paste(c(applyValue.id,applyValue.selectionCoeff,paste(applyValue.getValue('all_a'),sep=',')),sep=','),'\\n');"));
+	if(!writeFile(output_effects_file, mut_lines)){stop("Error writing effects file.");}
+
+	// output the sd of phenotypes to a file <-- this will be sd of total distance from optimum
+	distances=sapply(sim.subpopulations.individuals,"sqrt(sum(sapply(apply(sapply(applyValue.genomes.mutationsOfType(m1),'applyValue.getValue(\"all_a\");',simplify='matrix'), 0, 'sum(applyValue);') + sub_traits,'applyValue^2;')));" );
+	if(!writeFile(pheno_sd_file, asString(sd(distances)*sqrt((2*N-1)/(2*N))) )){stop("Error writing phenotype sd file.");}
+
+	// end simulation
+	sim.simulationFinished();
+}
+
+// calculate fitness for each individual; it is faster do update fitness scaling than to have a fitness callback
+s3 500 late(){
+	// baseline phenotypes from substitutions
+	new_subs_index=which(sim.substitutions.mutationType==m1 & sim.substitutions.fixationGeneration==(sim.generation-1));
+	if(length(new_subs_index))
+	{
+		sub_effects_matrix = sapply(sim.substitutions[new_subs_index], "applyValue.getValue('all_a');", simplify="matrix"); // each row refers to a trait, each column refers to a substitution, each element is an effect
+		defineGlobal("sub_traits",sub_traits + 2*apply(sub_effects_matrix, 0, "sum(applyValue);")); // total phenotypic contribution of substitution to each trait
+	}
+
+	// loop through individual to calculate fitness, based on their mutations
+	sim.subpopulations.individuals.fitnessScaling = sapply(sim.subpopulations.individuals,"exp(-sum(sapply(apply(sapply(applyValue.genomes.mutationsOfType(m1),'applyValue.getValue(\"all_a\");',simplify='matrix'), 0, 'sum(applyValue);') + sub_traits,'applyValue^2;'))/(2*n*(w^2)));" );
+
+	// broken down version of above:
+	// fitnesses = sapply(inds, "muts = applyValue.genomes.mutationsOfType(m1);"+
+	// 													"effects_matrix=sapply(muts,'applyValue.getValue(\"all_a\");',simplify='matrix');"	+
+	// 													"phenos=apply(effects_matrix, 0, 'sum(applyValue);') + sub_traits;"+
+	// 													"tot_dist=sum(sapply(phenos,'applyValue^2;'));" +
+	// 													"exp(-tot_dist/(2*n*(w^2)));"
+	// 													);
+
+}

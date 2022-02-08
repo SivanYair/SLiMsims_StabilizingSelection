@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# input: (1) sd of effect size dist (2) burn sim output file
+#        (3) burn log file (4) output sub file
+
+# exit when any command fails
+set -e
+
+sd_a=$1
+burn=$2
+burn_log=$3
+output_sub=$4
+
+slim -d sd_a=${sd_a} -d output_burn_file="'${burn}'" -d output_sub_file="'${output_sub}'" start_burn.slim > ${burn_log}

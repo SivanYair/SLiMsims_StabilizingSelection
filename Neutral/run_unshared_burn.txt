@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# input: (1) sd of effect size dist (2) burn sim input file
+#        (3) burn sim output file (4) divergence log file
+#        (5) input sub file (6) output sub file
+
+sd_a=$1
+input_simstate=$2
+output_simstate=$3
+div_log=$4
+input_sub=$5
+output_sub=$6
+
+slim -d sd_a=${sd_a} -d input_burn_file="'${input_simstate}'" -d output_burn_file="'${output_simstate}'" -d input_sub_file="'${input_sub}'" -d output_sub_file="'${output_sub}'" start_diverge_burn.slim > $div_log

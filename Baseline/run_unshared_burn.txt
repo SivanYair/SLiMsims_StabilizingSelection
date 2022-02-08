@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# input: (1) selection strength, w (2) sd of effect size dist (3) burn sim input file
+#        (4) burn sim output file (5) divergence log file
+#        (6) mutation trajectory log file (7) input substitution file (8) output substitution file
+
+w=$1
+sd_a=$2
+input_simstate=$3
+output_simstate=$4
+div_log=$5
+input_sub=$6
+output_sub=$7
+
+slim -d w=$w -d sd_a=${sd_a} -d input_burn_file="'${input_simstate}'" -d output_burn_file="'${output_simstate}'" -d input_sub_file="'${input_sub}'" -d output_sub_file="'${output_sub}'" start_diverge_burn.slim > $div_log

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# input: (1) sd of effect size dist (2) burn sim input file
+#        (3) burn sim output file (5) divergence log file <-- output for snakemake mainly
+#        (5) mutation tracking file (6) input sub file (7) output sub file
+
+# exit when any command fails
+set -e
+
+sd_a=$1
+input_simstate=$2
+output_simstate=$3
+div_log=$4
+mut_track_file=$5
+input_sub=$6
+output_sub=$7
+
+slim -d sd_a=${sd_a} -d input_diverge_file="'${input_simstate}'" -d output_diverge_file="'${output_simstate}'" -d mut_track_file="'${mut_track_file}'" -d input_sub_file="'${input_sub}'" -d output_sub_file="'${output_sub}'" diverge.slim > $div_log

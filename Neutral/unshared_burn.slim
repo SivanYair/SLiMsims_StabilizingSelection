@@ -1,0 +1,58 @@
+initialize() {
+
+		defineConstant("N",1e4); // population size
+		defineConstant("u",2e-6); // mutation rate
+
+		initializeMutationRate(u);
+
+		// QTL (type 1)
+		initializeMutationType("m1", 0.5, "n", 0.0, sd_a);  // QTL -- selection coefficients are actually effect sizes
+		initializeGenomicElementType("g1",m1,1.0);
+
+		// neutral demographic reference (type 2)
+		initializeMutationType("m2", 0.5, "f", 0.0);  // neut reference
+		initializeGenomicElementType("g2",m2,1.0);
+
+		// set up our chromosome regions
+	  defineConstant("n_QTL", 4000); // number of QTLs
+	  defineConstant("n_neutral_loci", 1000); // number of neutral bp with free recombination
+
+		initializeGenomicElement(g1,0,n_QTL-1);
+		initializeGenomicElement(g2,n_QTL,n_QTL+n_neutral_loci-1);
+
+		initializeRecombinationRate(0.5);
+
+		m1.convertToSubstitution = T;
+		m1.mutationStackPolicy = "f";
+		m2.mutationStackPolicy = "f";
+
+}
+
+fitness(m1) {
+	// Make the QTL effects neutral --
+	// the assigned selection coefficients are actually how we track their effect sizes
+	return 1.0;
+}
+
+
+1 late() {
+  sim.readFromPopulationFile(input_burn_file);
+
+  sim.generation=1;
+
+	// read the substitution info from a file
+	defineConstant("sub_trait_base", asFloat(readFile(input_sub_file)));
+
+}
+
+// output data at end of simulation -- needed to continue the simulation
+20000 late() {
+	// save the state of the simulation
+	sim.outputFull(output_burn_file,binary=T);
+
+	// output the substitution info to a file
+	if(!writeFile(output_sub_file, asString(sub_trait_base+2*sum(sim.substitutions.selectionCoeff)) )){stop("Error writing substitutions file.");}
+
+	// end simulation
+	sim.simulationFinished();
+}

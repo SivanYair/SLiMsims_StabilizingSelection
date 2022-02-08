@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# input: (1) selection strength, w (2) sd of effect size dist (3) burn sim input file
+#        (4) burn sim output file (5) divergence log file
+#        (6) input sub file (7) output sub file (8)number of traits under selection, n
+#		 (9) input mutation effects file (10) output mutation effects file
+
+w=$1
+sd_a=$2
+input_simstate=$3
+output_simstate=$4
+div_log=$5
+input_sub=$6
+output_sub=$7
+nTraits=$8
+input_effects=$9
+output_effects=${10}
+
+slim -d w=$w -d sd_a=${sd_a} -d input_burn_file="'${input_simstate}'" -d output_burn_file="'${output_simstate}'" -d input_sub_file="'${input_sub}'" -d output_sub_file="'${output_sub}'" -d n=$nTraits -d input_effects_file="'${input_effects}'" -d output_effects_file="'${output_effects}'" start_diverge_burn.slim > $div_log

@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# input: (1) selection strength, w (2) sd of effect size dist (3) burn sim input file
+#        (4) burn sim output file (5) divergence log file <-- output for snakemake mainly
+#        (6) mutation tracking file (7) input sub file (8) output sub file (9) output phenotype sd file
+#		 (10) number of traits under selection, n (11) input mutation effects file (12) output mutation effects file
+
+# exit when any command fails
+set -e
+
+w=$1
+sd_a=$2
+input_simstate=$3
+output_simstate=$4
+div_log=$5
+mut_track_file=$6
+input_sub=$7
+output_sub=$8
+pheno_sd=$9
+nTraits=${10}
+input_effects=${11}
+output_effects=${12}
+
+slim -d w=$w -d sd_a=${sd_a} -d input_diverge_file="'${input_simstate}'" -d output_diverge_file="'${output_simstate}'" -d mut_track_file="'${mut_track_file}'" -d input_sub_file="'${input_sub}'" -d output_sub_file="'${output_sub}'" -d pheno_sd_file="'${pheno_sd}'" -d n=$nTraits -d input_effects_file="'${input_effects}'" -d output_effects_file="'${output_effects}'" diverge.slim > $div_log

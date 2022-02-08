@@ -1,0 +1,89 @@
+initialize() {
+
+		defineConstant("N",1e4); // population size
+		defineConstant("u",2e-6); // mutation rate
+
+		initializeMutationRate(u);
+
+		// QTL (type 1)
+		initializeMutationType("m1", 0.5, "n", 0.0, sd_a);  // QTL -- selection coefficients are actually effect sizes
+		initializeGenomicElementType("g1",m1,1.0);
+
+		// neutral demographic reference (type 2)
+		initializeMutationType("m2", 0.5, "f", 0.0);  // neut reference
+		initializeGenomicElementType("g2",m2,1.0);
+
+		// set up our chromosome regions
+	  defineConstant("n_QTL", 4000); // number of QTLs
+	  defineConstant("n_neutral_loci", 1000); // number of neutral bp with free recombination
+
+		initializeGenomicElement(g1,0,n_QTL-1);
+		initializeGenomicElement(g2,n_QTL,n_QTL+n_neutral_loci-1);
+
+		initializeRecombinationRate(0.5);
+
+		m1.convertToSubstitution = T;
+		m1.mutationStackPolicy = "f";
+		m2.mutationStackPolicy = "f";
+}
+
+fitness(m1) {
+	// Make the QTL effects neutral --
+	// the assigned selection coefficients are actually how we track their effect sizes
+	return 1.0;
+}
+
+// load in population file, then decide which future script blocks to run based on the generation
+1 late() {
+  sim.readFromPopulationFile(input_diverge_file);
+
+	// make it generation 1
+	sim.generation=1;
+
+	// read the substitution info from a file
+	defineConstant("sub_trait_base", asFloat(readFile(input_sub_file)));
+
+	// each run is 3500 generations; generations to record output in this run:
+	record_gens = c(sim.generation + seq(500,3500,by=500));
+
+	// use the s1 block as a template to run in all generations of interest
+	for (gen in record_gens){
+		sim.registerLateEvent(NULL, s1.source, gen, gen);
+	}
+
+	// deregister the s1 block
+	sim.deregisterScriptBlock(s1);
+
+	// use the s2 block to save the state of the simulation for the next run
+	final_gen = record_gens[length(record_gens)-1];
+	sim.registerLateEvent(NULL, s2.source, final_gen, final_gen);
+	sim.deregisterScriptBlock(s2);
+
+
+	// record mutation data at start of divergence (common ancestor)
+	header = "generation,mut_type,mut_ID,position,effect_size,freq";
+	if (!writeFile(mut_track_file, header)){stop("Error writing file.");}
+	for(mut in sim.mutations){
+		if (!writeFile(mut_track_file, paste(c(sim.generation,mut.mutationType.id,mut.id,mut.position,mut.selectionCoeff,sim.mutationFrequencies(p1,mut)),sep=','), append=T)){stop("Error writing file.");}
+	}	
+
+}
+
+// record mutation data
+s1 500 late() {
+	for(mut in sim.mutations){
+		writeFile(mut_track_file, paste(c(sim.generation,mut.mutationType.id,mut.id,mut.position,mut.originGeneration,mut.subpopID,mut.selectionCoeff,sim.mutationFrequencies(p1,mut)),sep=','), append=T);
+	}
+}
+
+// output data at end of simulation
+s2 500 late() {
+	// save the state of the simulation
+	sim.outputFull(output_diverge_file,binary=T);
+
+	// output the substitution info to a file
+	if(!writeFile(output_sub_file, asString(sub_trait_base+2*sum(sim.substitutions.selectionCoeff)) )){stop("Error writing substitutions file.");}
+
+	// end simulation
+	sim.simulationFinished();
+}

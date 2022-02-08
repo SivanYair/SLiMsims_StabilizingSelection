@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# input: (1) selection strength, w (2) sd of effect size dist (3) burn sim input file
+#        (4) burn sim output file (5) divergence log file <-- output for snakemake mainly
+#        (6) mutation tracking file (7) input sub file (8) output sub file 
+#		 (9) input phenotype sd file - population 1 (10) input phenotype sd file - population 2
+# 		 (11) number of phenotype sd that the optimum will shift 
+
+# exit when any command fails
+set -e
+
+w=$1
+sd_a=$2
+input_simstate=$3
+output_simstate=$4
+div_log=$5
+mut_track_file=$6
+input_sub=$7
+output_sub=$8
+pheno_sd1=$9
+pheno_sd2=${10}
+num_sd_shift=${11}
+
+slim -d w=$w -d sd_a=${sd_a} -d input_diverge_file="'${input_simstate}'" -d output_diverge_file="'${output_simstate}'" -d mut_track_file="'${mut_track_file}'" -d input_sub_file="'${input_sub}'" -d output_sub_file="'${output_sub}'" -d pheno_sd_file1="'${pheno_sd1}'" -d pheno_sd_file2="'${pheno_sd2}'" -d num_sd_shift=${num_sd_shift} diverge.slim > $div_log
