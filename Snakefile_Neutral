@@ -1,0 +1,118 @@
+import numpy as np
+
+# file Storage
+storage="insert/"
+
+# script locations
+home="insert/"
+
+std_devs=[0.05, 0.1] # std dev of effect size dist 
+start_rep=1 # first rep to run
+tot_runs=200 # total number of runs
+
+divergence_numReps=10 # number of divergence reps per shared burn
+divergence_runs=np.arange(divergence_numReps)+start_rep
+
+burn_numReps=round(tot_runs/divergence_numReps) #number of burn reps
+burn_runs=np.arange(burn_numReps)+start_rep
+
+diverge_numGen=3500
+
+# populations, when they diverge
+pops=["A","B"]
+
+
+# SHARED BURN
+# sim state
+neutral_burn_simstate_file_pattern=storage+"Neutral/burn_output/simstates/sd{sd}_burnRun{burn_run}.txt"
+# trait value from substitutions
+neutral_burn_sub_file_pattern=storage+"Neutral/burn_output/sub_traits/sd{sd}_burnRun{burn_run}.txt"
+# log file
+neutral_burn_log_pattern=storage+"Neutral/burn_output/logs/sd{sd}_burnRun{burn_run}.log"
+
+
+# UNSHARED BURN
+# sim state
+neutral_divburn_simstate_file_pattern=storage+"Neutral/divburn_output/simstates/sd{sd}_burnRun{burn_run}_divRun{div_run}.txt"
+# trait value from substitutions
+neutral_divburn_sub_file_pattern=storage+"Neutral/divburn_output/sub_traits/sd{sd}_burnRun{burn_run}_divRun{div_run}.txt"
+# log file
+neutral_divburn_log_pattern=storage+"Neutral/divburn_output/logs/sd{sd}_burnRun{burn_run}_divRun{div_run}.log"
+
+
+# DIVERGENCE
+# csv of relevant mutation info for processing
+neutral_divergence_mut_tracking_file_pattern=storage+"Neutral/divergence_output/mut_track/sd{sd}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+# substitution files
+neutral_divergence_sub_file_pattern=storage+"Neutral/divergence_output/sub_traits/sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# log file
+neutral_divergence_log_pattern=storage+"Neutral/divergence_output/logs/sd{sd}_burnRun{burn_run}_divRun{div_run}_pop{p}.log"
+# sim state
+neutral_simState_file_pattern=storage+"Neutral/divergence_output/simstates/sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+final_neutral_simState_files=expand(neutral_simState_file_pattern,sd=std_devs,burn_run=burn_runs,div_run=divergence_runs,g=diverge_numGen,p=pops) # CHANGE TO GENERATIONS WE OUTPUT
+
+########################### PREPPED DATA ######################
+subdirectories = ["Qst_Fst", "prediction_accuracy", "mean_scores"] # Types of info we want
+prepped_data_pattern = storage+"Prepped_Data/{data_cat}/Neutral.RDS"
+prepped_data_files = expand(prepped_data_pattern,data_cat=subdirectories)
+
+rule all:
+    input:
+        prepped_data_files
+
+#### PREPPING DATA FOR ANALYSIS ####
+
+rule prep_data:
+    input: final_neutral_simState_files, home+"Analysis_Prep/Neutral_prep_{data_cat}.R"
+    output: prepped_data_pattern
+    params: runtime="03:00:00" # format HH:MM:SS
+    shell: "cd "+home+"Analysis_Prep; Rscript --vanilla Neutral_prep_{wildcards.data_cat}.R"
+
+
+### BASIC ###
+rule neutral_shared_burn:
+    input:
+        home+"Neutral/shared_burn.slim",
+        home+"Neutral/run_shared_burn.txt",
+    output:
+        burn=neutral_burn_simstate_file_pattern,
+        sub=neutral_burn_sub_file_pattern
+    params:
+        burn_log=neutral_burn_log_pattern,
+        runtime="48:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"Neutral ;"
+        "./run_start_burn.txt {wildcards.sd} {output.burn} {params.burn_log} {output.sub}"
+
+rule neutral_unshared_burn:
+    input:
+        home+"Neutral/unshared_burn.slim",
+        home+"Neutral/run_unshared_burn.txt",
+        simstate=neutral_burn_simstate_file_pattern,
+        sub=neutral_burn_sub_file_pattern
+    output:
+        simstate=neutral_divburn_simstate_file_pattern,
+        sub=neutral_divburn_sub_file_pattern
+    params:
+        div_log=neutral_divburn_log_pattern,
+        runtime="24:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"Neutral ;"
+        "./run_start_diverge_burn.txt {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {input.sub} {output.sub}"
+
+rule neutral_diverge:
+    input:
+        home+"Neutral/diverge.slim",
+        home+"Neutral/run_diverge.txt",
+        simstate=neutral_divburn_simstate_file_pattern,
+        sub=neutral_divburn_sub_file_pattern
+    output: 
+        sub=neutral_divergence_sub_file_pattern,
+        simstate=neutral_simState_file_pattern
+    params:
+        div_log=neutral_divergence_log_pattern,
+        mut_track=neutral_divergence_mut_tracking_file_pattern,
+        runtime="6:00:00", # format HH:MM:SS
+    shell:
+        "cd "+home+"Neutral ;"
+        "./run_diverge.txt {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {params.mut_track} {input.sub} {output.sub}"

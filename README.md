@@ -3,9 +3,6 @@ Code to generate simulations of stabilizing selection on complex traits in SLiM 
 
 This repository contains code associated with [Yair and Coop (2022)](https://doi.org/10.1101/2021.09.10.459833 ). We provide an overview of the workflow and contents of each directory below. See those directories and comments in scripts for more details. 
 
-Simulation Scripts:
-2 stages: shared burn, unshared burn, divergence (no migration between populations, so we do this separately for each population to reduce the burden on memory required for a single process)
-
 # Simulation framework
 Each simulation has a burn-in of 60,000 generations (which 6N generations for N=1e4, the population size we simulated). Since the burn-in is a time-consuming process, we split the burn-in into 2 parts: (1) a burn-in "shared" between groups of 10 simulation replicates for the first 40,000 generations, then (2) an independent 20,000 generation burn-in for each simulation replicate ("unshared"). 
 
@@ -15,7 +12,7 @@ We need to transfer information about the simulation state between each of the t
 
 During the divergence simulation, we record data on each mutation to a text file. We merge this data from each population and process it in R. This R code may not be particularly efficient or streamlined, but it works. 
 
-We first describe the baseline scenario that we simulate, and then 5 variations of this scenario. Each simulation type has its own associated Snakefile, which should help you assess the workflow and run these simulations at scale. 
+We first describe the baseline scenario that we simulate, and then 5 variations of this scenario. Each simulation type has its own associated Snakefile, which should help you assess the workflow and run these simulations at scale. Sivan Yair has scripts that break down each simulation stage into smaller pieces, which may help with running these simulations on a cluster; contact Sivan if you would like access to those. 
 
 ### Baseline
 Phenotypic stabilizing selection on a single trait. Mutations are assigned effect sizes from a normal distribution; effect sizes do not vary between populations. Effect sizes are stored as the selection coefficients of mutations because selection coefficients get saved in the simulation state recorded by SLiM. 
@@ -41,7 +38,11 @@ Throughout the simulation, we record the effect of a mutation in three populatio
 ### Pleiotropy
 When a mutation arises, we assign its effect on each trait independently from the same mutant effect size distribution. An individual's fitness is evaluated based on their Euclidean distance from the optimum. We record the effect of a mutation on each trait in the "values" attribute of the mutation. This information is not saved by SLiM, and therefore we record this and read this from a separate text file. The additional parameter is the number of traits under selection (n). 
 
+## Incorporating Physical Linkage 
+All of the above scenarios involve free recombination among QTLs that consist of 1bp loci. We also simulated QTLs of length 1kb, where there was low recombination within a QTL. Scripts for this scenario are provided. They are a replicate of the Baseline scenario, the only difference being the lines in the initialize() block that set up chromosome regions and recombination rates. Since these scripts are so similar to the Baseline, we do not provide a Snakefile, since just the input directory of scripts would need to change. 
 
+# Processing output
+We show how to process simulation output to get mean polygenic scores, Qst/Fst, and the reduction in prediction accuracy when using polygenic scores instead of additive genetic values, for different ascertainment schemes and generations. R scripts work with the output of all simulations of a particular variation to produce a single data frame that is saved as an RDS file and can be used elsewhere for further investigation.  This step is included in the Snakefiles. R scripts can be found in the Analysis Prep folder. The Snakefiles assume there's an existing directory for processed output that is called "Prepped_Data" with subdirectories, "Qst_Fst", "prediction_accuracy", and "mean_scores"
 
 
 

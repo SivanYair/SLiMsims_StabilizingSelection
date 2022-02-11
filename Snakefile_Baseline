@@ -1,0 +1,123 @@
+import numpy as np
+
+# file Storage
+storage="insert/"
+
+# script locations
+home="insert/"
+
+selection_strengths=[4,5,7] # w
+std_devs=[0.05,0.1] # std dev of effect size dist
+start_rep=1 # first rep to run
+tot_runs=200 # total number of runs
+
+divergence_numReps=10 # number of divergence reps per shared burn
+divergence_runs=np.arange(divergence_numReps)+start_rep
+
+burn_numReps=round(tot_runs/divergence_numReps) #number of burn reps
+burn_runs=np.arange(burn_numReps)+start_rep
+
+diverge_simstate_gens=[500,1500,2000,2500, diverge_numGen] # generations to save sim info, in case we want to start dir sel from there
+
+# populations, when they diverge
+pops=["A","B"]
+
+# SHARED BURN
+# sim state
+baseline_burn_simstate_file_pattern=storage+"Baseline/burn_output/simstates/w{omega}_sd{sd}_burnRun{burn_run}.txt"
+# trait value from substitutions
+baseline_burn_sub_file_pattern=storage+"Baseline/burn_output/sub_traits/w{omega}_sd{sd}_burnRun{burn_run}.txt"
+# log file
+baseline_burn_log_pattern=storage+"Baseline/burn_output/logs/w{omega}_sd{sd}_burnRun{burn_run}.log"
+
+# UNSHARED BURN
+# sim state
+baseline_divburn_simstate_file_pattern=storage+"Baseline/divburn_output/simstates/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}.txt"
+# trait value from substitutions
+baseline_divburn_sub_file_pattern=storage+"Baseline/divburn_output/sub_traits/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}.txt"
+# log files
+baseline_divburn_log_pattern=storage+"Baseline/divburn_output/logs/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}.log"
+
+
+# DIVERGENCE
+# csv of relevant mutation info for processing
+baseline_divergence_mut_tracking_file_pattern=storage+"Baseline/divergence_output/mut_track/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+# trait value from substitutions
+baseline_divergence_sub_file_pattern=storage+"Baseline/divergence_output/sub_traits/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# log file 
+baseline_divergence_log_pattern=storage+"Baseline/divergence_output/logs/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_pop{p}.log"
+# phenotype sd files
+baseline_phenoSD_file_pattern=storage+"Baseline/divergence_output/phenoSD/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# simstates 
+baseline_simState_file_pattern=storage+"Baseline/divergence_output/simstates/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+final_baseline_simState_files=expand(baseline_simState_file_pattern,omega=selection_strengths,sd=std_devs,burn_run=burn_runs,div_run=divergence_runs,g=diverge_simstate_gens,p=pops) 
+
+########################### PREPPED DATA ######################
+subdirectories = ["Qst_Fst", "prediction_accuracy", "mean_scores"] # Types of info we want
+prepped_data_pattern = storage+"Prepped_Data/{data_cat}/Baseline.RDS"
+prepped_data_files = expand(prepped_data_pattern,data_cat=subdirectories)
+
+rule all:
+    input:
+        prepped_data_files
+
+
+#### PREPPING DATA FOR ANALYSIS ####
+
+rule prep_data:
+    input: final_baseline_simState_files, home+"Analysis_Prep/Baseline_prep_{data_cat}.R"
+    output: prepped_data_pattern
+    params: runtime="03:00:00" # format HH:MM:SS
+    shell: "cd "+home+"Analysis_Prep; Rscript --vanilla Baseline_prep_{wildcards.data_cat}.R"
+
+
+### BASIC ###
+rule baseline_shared_burn:
+    input:
+        home+"Baseline/shared_burn.slim",
+        home+"Baseline/run_shared_burn.txt",
+    output:
+        burn=baseline_burn_simstate_file_pattern,
+        sub=baseline_burn_sub_file_pattern
+    params:
+        burn_log=baseline_burn_log_pattern,
+        runtime="48:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"Baseline ;"
+        "./run_start_burn.txt {wildcards.omega} {wildcards.sd} {output.burn} {params.burn_log} {output.sub}"
+
+rule baseline_unshared_burn:
+    input:
+        home+"Baseline/shared_burn.slim",
+        simstate=baseline_burn_simstate_file_pattern,
+        sub=baseline_burn_sub_file_pattern
+    output:
+        simstate=baseline_divburn_simstate_file_pattern,
+        sub=baseline_divburn_sub_file_pattern
+    params:
+        div_log=baseline_divburn_log_pattern,
+        runtime="24:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"Baseline ;"
+        "./run_start_diverge_burn.txt {wildcards.omega} {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {input.sub} {output.sub}"
+
+rule baseline_diverge:
+    input:
+        home+"Baseline/diverge.slim",
+        home+"Baseline/run_diverge.txt",
+        simstate=baseline_divburn_simstate_file_pattern,
+        sub=baseline_divburn_sub_file_pattern
+    output: # don't need to name files; these list output for all generations, the params section lists output for last generation of each category
+        expand(baseline_divergence_sub_file_pattern,g=diverge_simstate_gens, allow_missing=True),
+        expand(baseline_simState_file_pattern,g=diverge_simstate_gens, allow_missing=True),
+        expand(baseline_phenoSD_file_pattern,g=diverge_simstate_gens, allow_missing=True)
+    params:
+        div_log=baseline_divergence_log_pattern,
+        mut_track=baseline_divergence_mut_tracking_file_pattern,
+        runtime="06:00:00", # format HH:MM:SS
+        phenoSD_last=expand(baseline_phenoSD_file_pattern,g=diverge_numGen, allow_missing=True),
+        sub_last=expand(baseline_divergence_sub_file_pattern,g=diverge_numGen, allow_missing=True),
+        simstate_last=expand(baseline_simState_file_pattern,g=diverge_numGen, allow_missing=True)
+    shell:
+        "cd "+home+"Baseline ;"
+        "./run_diverge.txt {wildcards.omega} {wildcards.sd} {input.simstate} {params.simstate_last} {params.div_log} {params.mut_track} {input.sub} {params.sub_last} {params.phenoSD_last}"

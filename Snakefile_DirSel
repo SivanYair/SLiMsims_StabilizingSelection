@@ -1,0 +1,90 @@
+import numpy as np
+
+# file Storage
+storage="insert/"
+
+# script locations
+home="insert/"
+
+selection_strengths=[7,5,4] # w
+std_devs=[0.1] # std dev of effect size dist
+start_rep=1 # first rep to run
+tot_runs=100 # total number of runs
+
+divergence_numReps=10 # number of divergence reps per burn
+divergence_runs=np.arange(divergence_numReps)+start_rep
+
+burn_numReps=round(tot_runs/divergence_numReps) #number of burn reps
+burn_runs=np.arange(burn_numReps)+start_rep
+
+# populations, when they diverge
+pops=["A","B"]
+
+# Directional selection parameters
+sd_shifts=[1,2] # number of std. dev. shifts in optimum
+dirSel_gens=[2500] # generations to start directional selection
+
+
+# INPUT DIVERGENCE FILES (from Baseline)
+# substitution files
+baseline_divergence_sub_file_pattern=storage+"Baseline/divergence_output/sub_traits/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# phenotype sd files
+baseline_phenoSD_file_pattern=storage+"Baseline/divergence_output/phenoSD/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# simulation state
+baseline_simState_file_pattern=storage+"Baseline/divergence_output/simstates/w{omega}_sd{sd}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+
+# OUTPUT DIVERGENCE FILES (from Directional Selection)
+# csv of relevant mutation info for processing
+DirSel_divergence_mut_tracking_file_pattern=storage+"DirSel/divergence_output/mut_track/w{omega}_sd{sd}_sdShift{shift}_startGen{startgen}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+# substitution files
+DirSel_divergence_sub_file_pattern=storage+"DirSel/divergence_output/sub_traits/w{omega}_sd{sd}_sdShift{shift}_startGen{startgen}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+# log file
+DirSel_divergence_log_pattern=storage+"DirSel/divergence_output/logs/w{omega}_sd{sd}_sdShift{shift}_startGen{startgen}_burnRun{burn_run}_divRun{div_run}_pop{p}.log"
+# sim state
+DirSel_simState_file_pattern=storage+"DirSel/divergence_output/simstates/w{omega}_sd{sd}_sdShift{shift}_startGen{startgen}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+final_DirSel_simState_files=expand(DirSel_simState_file_pattern,omega=selection_strengths,sd=std_devs,shift=sd_shifts,startgen=dirSel_gens,burn_run=burn_runs,div_run=divergence_runs,p=pops) 
+
+
+# INFO ON HOW TO PROCESS SIMULATIONS
+subdirectories = ["Qst_Fst", "prediction_accuracy", "mean_scores"] # Types of info we want
+prepped_data_pattern = storage+"Prepped_Data/{data_cat}/DirSel.RDS"
+prepped_data_files = expand(prepped_data_pattern,data_cat=subdirectories)
+
+rule all:
+    input: prepped_data_files
+
+
+rule prep_data:
+    input: final_DirSel_simState_files, home+"Analysis_Prep/DirSel_prep_{data_cat}.R"
+    output: prepped_data_pattern
+    params: runtime="03:00:00" # format HH:MM:SS
+    shell: "cd "+home+"Analysis_Prep; Rscript --vanilla DirSel_prep_{wildcards.data_cat}.R"
+
+
+def DirSel_diverge_simstate(wcs):
+    return expand(baseline_simState_file_pattern,g=wcs.startgen, allow_missing=True)
+
+def DirSel_diverge_sub(wcs):
+    return expand(baseline_divergence_sub_file_pattern,g=wcs.startgen, allow_missing=True)
+
+def DirSel_pheno_SD_file(wcs):
+    return expand(baseline_phenoSD_file_pattern,g=wcs.startgen,p=pops,allow_missing=True)
+
+rule DirSel_diverge:
+    input:
+        home+"DirSel/diverge.slim",
+        home+"DirSel/run_diverge.txt",
+        simstate=DirSel_diverge_simstate,
+        sub=DirSel_diverge_sub,
+        phenoSD=DirSel_pheno_SD_file
+    output:
+        sub=DirSel_divergence_sub_file_pattern,
+        simstate=DirSel_simState_file_pattern
+    params:
+        div_log=DirSel_divergence_log_pattern,
+        mut_track=DirSel_divergence_mut_tracking_file_pattern,
+        runtime="06:00:00" # format HH:MM:SS
+    shell:
+    "cd "+home+"DirSel ;"
+    "./run_diverge.txt {wildcards.omega} {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {params.mut_track} {input.sub} {output.sub} {input.phenoSD} {wildcards.shift}"
+    

@@ -1,0 +1,133 @@
+import numpy as np
+
+# file Storage
+storage="insert/"
+
+# script locations
+home="insert/"
+
+selection_strengths=[7,5,4] # w
+std_devs=[0.1] # std dev of effect size dist
+start_rep=1 # first rep to run
+tot_runs=100 # total number of runs
+
+divergence_numReps=10 # number of divergence reps per shared burn
+divergence_runs=np.arange(divergence_numReps)+start_rep
+
+burn_numReps=round(tot_runs/divergence_numReps) #number of burn reps
+burn_runs=np.arange(burn_numReps)+start_rep
+
+diverge_simstate_gens=3500 # number of generations that the populations diverge / the generation that the divergence simulation script is hardcoded to end at & save sim info
+
+# populations, when they diverge
+pops=["A","B"]
+
+# Pleiotropy parameters
+nTraits=[5,10] # number of traits under selection
+
+# SHARED BURN
+# sim state
+pleio_burn_simstate_file_pattern=storage+"Pleiotropy/burn_output/simstates/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}.txt"
+# trait value from substitutions
+pleio_burn_sub_file_pattern=storage+"Pleiotropy/burn_output/sub_traits/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}.txt"
+# log file
+pleio_burn_log_pattern=storage+"Pleiotropy/burn_output/logs/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}.log"
+# mutation effects on each trait
+pleio_burn_effects_pattern=storage+"Pleiotropy/burn_output/effects/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}.log"
+
+# UNSHARED BURN
+# sim state
+pleio_divburn_simstate_file_pattern=storage+"Pleiotropy/divburn_output/simstates/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}.txt"
+# trait value from substitutions
+pleio_divburn_sub_file_pattern=storage+"Pleiotropy/divburn_output/sub_traits/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}.txt"
+# log file
+pleio_divburn_log_pattern=storage+"Pleiotropy/divburn_output/logs/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}.log"
+# mutation effects on each trait
+pleio_divburn_effects_pattern=storage+"Pleiotropy/divburn_output/effects/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}.log"
+
+# DIVERGENCE
+# csv of relevant mutation info for processing
+pleio_divergence_mut_tracking_file_pattern=storage+"Pleiotropy/divergence_output/mut_track/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+# trait value from substitutions
+pleio_divergence_sub_file_pattern=storage+"Pleiotropy/divergence_output/sub_traits/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# log file
+pleio_divergence_log_pattern=storage+"Pleiotropy/divergence_output/logs/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.log"
+# phenotype sd files
+pleio_phenoSD_file_pattern=storage+"Pleiotropy/divergence_output/phenoSD/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# sim state
+pleio_simState_file_pattern=storage+"Pleiotropy/divergence_output/simstates/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+final_pleio_simState_files=expand(pleio_simState_file_pattern,omega=selection_strengths,sd=std_devs,nt=nTraits,burn_run=burn_runs,div_run=divergence_runs,g=diverge_simstate_gens,p=pops) # CHANGE TO GENERATIONS WE OUTPUT
+# mutation effects on each trait
+pleio_divergence_effects_pattern=storage+"Pleiotropy/divergence_output/effects/w{omega}_sd{sd}_nTraits{nt}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+
+########################### PREPPED DATA ######################
+subdirectories = ["Qst_Fst", "prediction_accuracy", "mean_scores"] # Types of info we want
+prepped_data_pattern = storage+"Prepped_Data/{data_cat}/Pleiotropy.RDS"
+prepped_data_files = expand(prepped_data_pattern,data_cat=subdirectories)
+
+
+rule all:
+    input:
+      prepped_data_files
+
+
+rule prep_data:
+    input: final_pleio_simState_files, home+"Analysis_Prep/Pleiotropy_prep_{data_cat}.R"
+    output: prepped_data_pattern
+    params: runtime="03:00:00" # format HH:MM:SS
+    shell: "cd "+home+"Analysis_Prep; Rscript --vanilla Pleiotropy_prep_{wildcards.data_cat}.R"
+
+########### PLEIOTROPY ###########
+rule pleio_shared_burn:
+     input:
+        home+"Pleiotropy/shared_burn.slim",
+        home+"Pleiotropy/run_shared_burn.txt"
+     output:
+        burn=pleio_burn_simstate_file_pattern,
+        sub=pleio_burn_sub_file_pattern,
+        effects=pleio_burn_effects_pattern
+     params:
+        burn_log=pleio_burn_log_pattern,
+        runtime="48:00:00" # format HH:MM:SS
+     shell:
+        "cd "+home+"Pleiotropy ;"
+        "./run_start_burn.txt {wildcards.omega} {wildcards.sd} {output.burn} {params.burn_log} {output.sub} {wildcards.nt} {output.effects}"
+
+rule pleio_unshared_burn:
+    input:
+      home+"Pleiotropy/unshared_burn.slim",
+      home+"Pleiotropy/run_unshared_burn.txt",
+      simstate=pleio_burn_simstate_file_pattern,
+      sub=pleio_burn_sub_file_pattern,
+      effects=pleio_burn_effects_pattern
+    output:
+      simstate=pleio_divburn_simstate_file_pattern,
+      sub=pleio_divburn_sub_file_pattern,
+      effects=pleio_divburn_effects_pattern
+    params:
+      div_log=pleio_divburn_log_pattern,
+      runtime="24:00:00" # format HH:MM:SS
+    shell:
+      "cd "+home+"Pleiotropy ;"
+      "./run_start_diverge_burn.txt {wildcards.omega} {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {input.sub} {output.sub} {wildcards.nt} {input.effects} {output.effects}"
+
+rule pleio_diverge:
+    input:
+      home+"Pleiotropy/diverge.slim",
+      home+"Pleiotropy/run_diverge.txt",
+      simstate=pleio_divburn_simstate_file_pattern,
+      sub=pleio_divburn_sub_file_pattern,
+      effects=pleio_divburn_effects_pattern
+    output:
+      sub=pleio_divergence_sub_file_pattern,
+      simstate=pleio_simState_file_pattern,
+      phenoSD=pleio_phenoSD_file_pattern,
+      effects=pleio_divergence_effects_pattern
+    params:
+      div_log=pleio_divergence_log_pattern,
+      mut_track=pleio_divergence_mut_tracking_file_pattern,
+      runtime="6:00:00" # format HH:MM:SS
+    shell:
+      "cd "+home+"Pleiotropy ;"
+      "chmod u=rwx run_diverge.txt ;"
+      "./run_diverge.txt {wildcards.omega} {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {params.mut_track} {input.sub} {output.sub} {output.phenoSD} {wildcards.nt} {input.effects} {output.effects}"

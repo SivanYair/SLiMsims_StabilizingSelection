@@ -1,0 +1,86 @@
+initialize() {
+
+		defineConstant("N",1e4); // population size
+		defineConstant("u",2e-6); // mutation rate
+
+		initializeMutationRate(u);
+
+		// QTL (type 1)
+		initializeMutationType("m1", 0.5, "n", 0.0, sd_a);  // QTL -- selection coefficients are actually effect sizes
+		initializeGenomicElementType("g1",m1,1.0);
+
+		// neutral demographic reference (type 2)
+		initializeMutationType("m2", 0.5, "f", 0.0);  // neut reference
+		initializeGenomicElementType("g2",m2,1.0);
+
+		m1.convertToSubstitution = T;
+		m1.mutationStackPolicy = "f";
+		m2.mutationStackPolicy = "f";
+
+		// set up our chromosome regions
+  		defineConstant("n_QTL", 3000); // number of QTLs
+		defineConstant("QTL_size", 1000); // size of QTLs (number of bp they span)
+  		defineConstant("n_neutral_loci", 1000); // number of neutral bp with free recombination
+		defineConstant("neutral_size", 1000); // size of neutral loci (number of bp they span)
+
+		// create loci with free recombination between them
+		pos = 0; // start position counter
+		ends=c(); // start an empty vector for ends of constant recombination rate regions
+
+ 		for (i in 1:n_QTL){
+  			initializeGenomicElement(g1, pos, pos + QTL_size-1);
+			ends=c(ends, pos + QTL_size-1, pos+QTL_size); // paste onto ends of loci the two positions between which there's free recombination (this block and start of next block)
+  			pos = pos + QTL_size; // pos is now where the start of the next block is
+ 		}
+ 		QTL_end = pos-1; // define last position of QTLs for later
+
+ 		for(i in 1:n_neutral_loci){
+	 		initializeGenomicElement(g2, pos, pos + neutral_size-1);
+	 		ends=c(ends, pos + neutral_size-1, pos+neutral_size); // paste onto ends of loci the two positions between which there's free recombination (this block and start of next block)
+	 		pos = pos + neutral_size; // pos is now where the start of the next block is
+ 		}
+		// remove the last ends value because there's no new locus to attach
+		ends=ends[0:(length(ends)-2)]; // need to substract 2 because length() counts from 1 while vector index starts at 0
+
+ 		// we want the QTLs and neutral sites to be unlinked; build a recombination map for that
+  		rates = rep(c(1e-8, 0.5), n_QTL+n_neutral_loci);
+		// remove the last rates value because there's no new locus to attach to have free recombination between
+		rates=rates[0:(length(rates)-2)]; // need to substract 2 because length() counts from 1 while vector index starts at 0
+
+  		initializeRecombinationRate(rates, ends);
+
+}
+
+fitness(m1) {
+	// Make the QTL effects neutral --
+	// the assigned selection coefficients are actually how we track their effect sizes
+	// and we calculate fitness based on an individual's total phenotype each generation
+	// by changing the fitnessScaling attribute
+	return 1.0;
+}
+
+1 early() {
+	sim.addSubpop("p1", N);
+}
+
+// calculate fitness for each individual; it is faster do update fitness scaling than to have a fitness callback
+1: late(){
+	add2pheno = 2*sum(sim.substitutions.selectionCoeff); // substitutions that contributes to all phenotype values, factor of 2 for homozygous
+
+	inds = sim.subpopulations.individuals;
+	phenotypes = inds.sumOfMutationsOfType(m1) + add2pheno;
+	inds.fitnessScaling = exp(-(phenotypes^2) / (2*(w^2))) ;
+
+}
+
+// output data at end of simulation -- needed to continue the simulation
+40000 late() {
+	// save the state of the simulation
+	sim.outputFull(output_burn_file,binary=T);
+
+	// output the substitution info to a file
+	if(!writeFile(output_sub_file, asString(2*sum(sim.substitutions.selectionCoeff)) )){stop("Error writing substitutions file.");}
+
+	// end simulation
+	sim.simulationFinished();
+}

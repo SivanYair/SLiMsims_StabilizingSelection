@@ -1,0 +1,131 @@
+import numpy as np
+
+# file Storage
+storage="insert/"
+
+# script locations
+home="insert/"
+
+
+selection_strengths=[7,5,4] # w
+std_devs=[0.1] # std dev of effect size dist 
+start_rep=1 # first rep to run
+tot_runs=100 # total number of runs
+
+divergence_numReps=10 # number of divergence reps per shared burn
+divergence_runs=np.arange(divergence_numReps)+start_rep
+
+burn_numReps=round(tot_runs/divergence_numReps) #number of burn reps
+burn_runs=np.arange(burn_numReps)+start_rep
+
+diverge_simstate_gens=3500 # number of generations that the populations diverge / the generation that the divergence simulation script is hardcoded to end at & save sim info
+
+# populations, when they diverge
+pops=["A","B"]
+
+# GxE parameters
+corrs=[0.9,0.95] # correlation among populations of a mutation's effect size
+
+# SHARED BURN
+# sim state
+GxE_burn_simstate_file_pattern=storage+"GxE/burn_output/simstates/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}.txt"
+# trait value from substitutions
+GxE_burn_sub_file_pattern=storage+"GxE/burn_output/sub_traits/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}.txt"
+# log file
+GxE_burn_log_pattern=storage+"GxE/burn_output/logs/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}.log"
+# mutation effects in each population
+GxE_burn_effects_pattern=storage+"GxE/burn_output/effects/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}.log"
+
+# UNSHARED BURN
+# sim state
+GxE_divburn_simstate_file_pattern=storage+"GxE/divburn_output/simstates/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}.txt"
+# trait value from substitutions
+GxE_divburn_sub_file_pattern=storage+"GxE/divburn_output/sub_traits/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}.txt"
+# log file
+GxE_divburn_log_pattern=storage+"GxE/divburn_output/logs/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}.log"
+# mutation effects in each population
+GxE_divburn_effects_pattern=storage+"GxE/divburn_output/effects/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}.log"
+
+# DIVERGENCE
+# csv of relevant mutation info for processing
+GxE_divergence_mut_tracking_file_pattern=storage+"GxE/divergence_output/mut_track/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}_pop{p}.txt"
+# trait value from substitutions
+GxE_divergence_sub_file_pattern=storage+"GxE/divergence_output/sub_traits/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+# log file
+GxE_divergence_log_pattern=storage+"GxE/divergence_output/logs/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.log"
+# sim state
+GxE_simState_file_pattern=storage+"GxE/divergence_output/simstates/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+final_GxE_simState_files=expand(GxE_simState_file_pattern,omega=selection_strengths,sd=std_devs,corr=corrs,burn_run=burn_runs,div_run=divergence_runs,g=diverge_simstate_gens,p=pops) # CHANGE TO GENERATIONS WE OUTPUT
+# mutation effects in each population
+GxE_divergence_effects_pattern=storage+"GxE/divergence_output/effects/w{omega}_sd{sd}_corr{corr}_burnRun{burn_run}_divRun{div_run}_gen{g}_pop{p}.txt"
+
+########################### PREPPED DATA ######################
+subdirectories = ["Qst_Fst", "prediction_accuracy", "mean_scores"] # Types of info we want
+prepped_data_pattern = storage+"Prepped_Data/{data_cat}/GxE.RDS"
+prepped_data_files = expand(prepped_data_pattern,data_cat=subdirectories)
+
+
+rule all:
+    input:
+      prepped_data_files
+
+
+rule prep_data:
+    input: final_GxE_simState_files, home+"Analysis_Prep/GxE_prep_{data_cat}.R"
+    output: prepped_data_pattern
+    params: runtime="03:00:00" # format HH:MM:SS
+    shell: "cd "+home+"Analysis_Prep; Rscript --vanilla GxE_prep_{wildcards.data_cat}.R"
+
+
+########### GxE ###########
+rule GxE_shared_burn:
+    input:
+        home+"GxE/shared_burn.slim",
+        home+"GxE/unshared_burn.txt",
+    output:
+        burn=GxE_burn_simstate_file_pattern,
+        sub=GxE_burn_sub_file_pattern,
+        effects=GxE_burn_effects_pattern
+    params:
+        burn_log=GxE_burn_log_pattern,
+        runtime="48:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"GxE ;"
+        "./run_start_burn.txt {wildcards.omega} {wildcards.sd} {output.burn} {params.burn_log} {output.sub} {wildcards.corr} {output.effects}"
+
+rule GxE_unshared_burn:
+    input:
+        home+"GxE/unshared_burn.slim",
+        home+"GxE/run_unshared_burn.txt",
+        simstate=GxE_burn_simstate_file_pattern,
+        sub=GxE_burn_sub_file_pattern,
+        effects=GxE_burn_effects_pattern
+    output:
+        sub=GxE_divburn_sub_file_pattern,
+        simstate=GxE_divburn_simstate_file_pattern,
+        effects=GxE_divburn_effects_pattern
+    params:
+        div_log=GxE_divburn_log_pattern,
+        runtime="24:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"GxE ;"
+        "./run_diverge_burn.txt {wildcards.omega} {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {input.sub} {output.sub} {wildcards.corr} {input.effects} {output.effects}"
+
+rule GxE_diverge:
+    input:
+        home+"GxE/diverge.slim",
+        home+"GxE/run_diverge.txt",
+        sub=GxE_divburn_sub_file_pattern,
+        simstate=GxE_divburn_simstate_file_pattern,
+        effects=GxE_divburn_effects_pattern
+    output:
+        sub=GxE_divergence_sub_file_pattern,
+        simstate=GxE_simState_file_pattern,
+        effects=GxE_divergence_effects_pattern
+    params:
+        div_log=GxE_divergence_log_pattern,
+        mut_track=GxE_divergence_mut_tracking_file_pattern,
+        runtime="06:00:00" # format HH:MM:SS
+    shell:
+        "cd "+home+"GxE ;"
+        "./run_diverge.txt {wildcards.omega} {wildcards.sd} {input.simstate} {output.simstate} {params.div_log} {params.mut_track} {input.sub} {output.sub} {wildcards.corr} {input.effects} {output.effects} {wildcards.p}"

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# input: (1) selection strength, w (2) sd of effect size dist 
+# (3) burn sim output file (4) burn log file (5) output substitution file
+
+# exit when any command fails
+set -e
+
+w=$1
+sd_a=$2
+burn=$3
+burn_log=$4
+output_sub=$5
+
+slim -d w=$w -d sd_a=${sd_a} -d output_burn_file="'${burn}'" -d output_sub_file="'${output_sub}'" start_burn.slim > ${burn_log}
