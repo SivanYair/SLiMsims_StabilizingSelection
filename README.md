@@ -4,7 +4,7 @@ Code to generate simulations of stabilizing selection on complex traits in SLiM 
 This repository contains code associated with [Yair and Coop (2022)](https://doi.org/10.1101/2021.09.10.459833 ). We provide an overview of the workflow and contents of each directory below. See those directories and comments in scripts for more details. 
 
 # Simulation framework
-Each simulation has a burn-in of 60,000 generations (which 6N generations for N=1e4, the population size we simulated). Since the burn-in is a time-consuming process, we split the burn-in into 2 parts: (1) a burn-in "shared" between groups of 10 simulation replicates for the first 40,000 generations, then (2) an independent 20,000 generation burn-in for each simulation replicate ("unshared"). 
+Each simulation has a burn-in of 60,000 generations (which is 6N generations for N=1e4, the population size we simulated). Since the burn-in is a time-consuming process, we split the burn-in into 2 parts: (1) a burn-in "shared" between groups of 10 simulation replicates for the first 40,000 generations, then (2) an independent 20,000 generation burn-in for each simulation replicate ("unshared"). 
 
 After the burn-in, we track the divergence in the genetic basis of trait variation between two populations that independently diverge from the common ancestor (burn-in state). Since we do not consider migration between populations, we repeat the divergence from the common ancestor twice to represent each population. 
 
